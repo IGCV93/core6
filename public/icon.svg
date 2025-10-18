@@ -1,0 +1,17 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#2563eb" stroke="#1d4ed8" stroke-width="8"/>
+  
+  <!-- Amazon arrow-like shape -->
+  <path d="M150 200 L200 250 L150 300 L200 250 L350 250 L400 200 L350 150 L200 250 Z" fill="white"/>
+  
+  <!-- Analysis chart bars -->
+  <rect x="120" y="320" width="40" height="80" fill="white" rx="4"/>
+  <rect x="180" y="300" width="40" height="100" fill="white" rx="4"/>
+  <rect x="240" y="280" width="40" height="120" fill="white" rx="4"/>
+  <rect x="300" y="260" width="40" height="140" fill="white" rx="4"/>
+  <rect x="360" y="240" width="40" height="160" fill="white" rx="4"/>
+  
+  <!-- Core text -->
+  <text x="256" y="420" text-anchor="middle" fill="white" font-family="Arial, sans-serif" font-size="24" font-weight="bold">CORE</text>
+</svg>
