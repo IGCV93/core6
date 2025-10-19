@@ -28,7 +28,7 @@ export async function generateExcelReport(analysis: Analysis): Promise<ArrayBuff
   let currentRow = 2;
   
   // SECTION 1: Price Competitiveness
-  worksheet.addRow(['Price Competitiveness (10)', ...products.map(p => `$${p.price.toFixed(2)}`)]);
+  worksheet.addRow(['Price Competitiveness (30)', ...products.map(p => `$${p.price.toFixed(2)}`)]);
   const priceDataRow = worksheet.getRow(currentRow);
   priceDataRow.eachCell((cell, colNumber) => {
     if (colNumber > 1) { // Skip category column
@@ -57,7 +57,7 @@ export async function generateExcelReport(analysis: Analysis): Promise<ArrayBuff
   currentRow++;
   
   // SECTION 2: Shipping Speed
-  worksheet.addRow(['Shipping Speed (10) zip code - 07731', ...products.map(p => `${p.shippingDays} days`)]);
+  worksheet.addRow(['Shipping Speed (15) zip code - 07731', ...products.map(p => `${p.shippingDays} days`)]);
   const shippingDataRow = worksheet.getRow(currentRow);
   shippingDataRow.eachCell((cell, colNumber) => {
     if (colNumber > 1) {
@@ -86,7 +86,7 @@ export async function generateExcelReport(analysis: Analysis): Promise<ArrayBuff
   currentRow++;
   
   // SECTION 3: Number of Reviews
-  worksheet.addRow(['Number of Reviews (30)', ...products.map(p => p.reviewCount.toString())]);
+  worksheet.addRow(['Number of Reviews (10)', ...products.map(p => p.reviewCount.toString())]);
   const reviewDataRow = worksheet.getRow(currentRow);
   reviewDataRow.eachCell((cell, colNumber) => {
     if (colNumber > 1) {
@@ -115,7 +115,7 @@ export async function generateExcelReport(analysis: Analysis): Promise<ArrayBuff
   currentRow++;
   
   // SECTION 4: Review Quality
-  worksheet.addRow(['Review Quality (30)', ...products.map(p => p.rating.toString())]);
+  worksheet.addRow(['Review Quality (15)', ...products.map(p => p.rating.toString())]);
   const ratingDataRow = worksheet.getRow(currentRow);
   ratingDataRow.eachCell((cell, colNumber) => {
     if (colNumber > 1) {
@@ -160,7 +160,7 @@ export async function generateExcelReport(analysis: Analysis): Promise<ArrayBuff
   });
   currentRow++;
   
-  worksheet.addRow(['IMAGES STACK (10)', ...products.map(p => {
+  worksheet.addRow(['IMAGES STACK (5)', ...products.map(p => {
     const ranking = imageStackRankings.find(r => r.productId === p.id);
     return ranking ? `#${ranking.rank}` : '#6';
   })]);
@@ -213,7 +213,7 @@ export async function generateExcelReport(analysis: Analysis): Promise<ArrayBuff
   
   // SECTION 6: Features
   const featuresRankings = analysis.pollResults.features?.rankings || [];
-  worksheet.addRow(['FEATURES & FUNCTIONALITY (30)', ...products.map(p => {
+  worksheet.addRow(['FEATURES & FUNCTIONALITY (15)', ...products.map(p => {
     const ranking = featuresRankings.find(r => r.productId === p.id);
     return ranking ? `#${ranking.rank}` : '#6';
   })]);
@@ -245,7 +245,7 @@ export async function generateExcelReport(analysis: Analysis): Promise<ArrayBuff
   currentRow++;
   
   // FINAL ROW: Total Score
-  worksheet.addRow(['Total Score (130)', ...calculations.map(c => c.totalScore)]);
+  worksheet.addRow(['Total Score (100)', ...calculations.map(c => c.totalScore)]);
   const totalScoreRow = worksheet.getRow(currentRow);
   totalScoreRow.eachCell((cell, colNumber) => {
     cell.font = { bold: true, name: 'Calibri', size: 11 };
