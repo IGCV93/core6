@@ -62,7 +62,7 @@ export default function DataCollectionEnhanced() {
       if (response.ok) {
         const refreshedData = await response.json();
         const updated = [...fetchedProducts];
-        updated[index] = refreshedData;
+        updated[index] = refreshedData.product;
         setFetchedProducts(updated);
       } else {
         console.error('Failed to refresh product:', product.asin);

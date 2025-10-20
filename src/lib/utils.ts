@@ -78,3 +78,56 @@ export function convertToBase64WithMediaType(file: File): Promise<{base64: strin
     reader.onerror = error => reject(error);
   });
 }
+
+/**
+ * Scoring threshold system for product competitiveness
+ * Pass: 75+ points (75-100)
+ * Improve: 40-74 points  
+ * Discontinue: <40 points (0-39)
+ */
+export type ScoreThreshold = 'Pass' | 'Improve' | 'Discontinue';
+
+export function getScoreThreshold(score: number): ScoreThreshold {
+  if (score >= 75) return 'Pass';
+  if (score >= 40) return 'Improve';
+  return 'Discontinue';
+}
+
+export function getScoreThresholdColor(threshold: ScoreThreshold): string {
+  switch (threshold) {
+    case 'Pass':
+      return 'bg-green-100 text-green-800 border-green-200';
+    case 'Improve':
+      return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    case 'Discontinue':
+      return 'bg-red-100 text-red-800 border-red-200';
+    default:
+      return 'bg-gray-100 text-gray-800 border-gray-200';
+  }
+}
+
+export function getScoreThresholdIcon(threshold: ScoreThreshold): string {
+  switch (threshold) {
+    case 'Pass':
+      return '✅';
+    case 'Improve':
+      return '⚠️';
+    case 'Discontinue':
+      return '❌';
+    default:
+      return '❓';
+  }
+}
+
+export function getScoreThresholdDescription(threshold: ScoreThreshold): string {
+  switch (threshold) {
+    case 'Pass':
+      return 'Strong competitive position - maintain current strategy';
+    case 'Improve':
+      return 'Needs optimization - focus on key improvement areas';
+    case 'Discontinue':
+      return 'Significant competitive gaps - consider major changes or discontinuation';
+    default:
+      return 'Unknown threshold';
+  }
+}

@@ -1,5 +1,6 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import { Analysis, Product, ScoreCalculation, PollResult } from './types';
+import { getScoreThreshold, getScoreThresholdDescription } from './utils';
 
 /**
  * Calculate price gaps between products
@@ -274,11 +275,18 @@ export async function generateMarketOpportunityAnalysis(
 PRODUCTS ANALYZED:
 ${products.map(p => `- ${p.name} (${p.asin}): $${p.price}, ${p.shippingDays} days, ${p.rating}★ (${p.reviewCount} reviews)`).join('\n')}
 
-SCORE BREAKDOWN:
+SCORE BREAKDOWN WITH COMPETITIVE THRESHOLDS:
 ${calculations.map(c => {
   const product = products.find(p => p.id === c.productId);
-  return `- ${product?.name || c.productId}: Total ${c.totalScore}/50 (Price: ${c.priceScore}/10, Shipping: ${c.shippingScore}/10, Reviews: ${c.reviewScore + c.ratingScore}/20, Images: ${c.mainImageScore + c.imageStackScore}/20, Features: ${c.featuresScore}/10)`;
+  const threshold = getScoreThreshold(c.totalScore);
+  const thresholdIcon = threshold === 'Pass' ? '✅' : threshold === 'Improve' ? '⚠️' : '❌';
+  return `- ${product?.name || c.productId}: Total ${c.totalScore}/100 (${thresholdIcon} ${threshold}) - Price: ${c.priceScore}/30, Shipping: ${c.shippingScore}/15, Reviews: ${c.reviewScore}/10, Rating: ${c.ratingScore}/15, Images: ${c.mainImageScore + c.imageStackScore}/15, Features: ${c.featuresScore}/15`;
 }).join('\n')}
+
+COMPETITIVE THRESHOLD ANALYSIS:
+- Pass (75+ points): Strong competitive position - maintain current strategy
+- Improve (40-74 points): Needs optimization - focus on key improvement areas  
+- Fail (<40 points): Significant competitive gaps - consider major changes or discontinuation
 
 POLL RESULTS:
 ${pollResults.mainImage ? `Main Image Poll: ${pollResults.mainImage.rankings.map(r => `${r.percentage}% prefer product ${r.productId}`).join(', ')}` : 'No main image poll data'}
@@ -286,12 +294,13 @@ ${pollResults.imageStack ? `Image Stack Poll: ${pollResults.imageStack.rankings.
 ${pollResults.features ? `Features Poll: ${pollResults.features.rankings.map(r => `${r.percentage}% prefer product ${r.productId}`).join(', ')}` : 'No features poll data'}
 
 Please provide a detailed market opportunity analysis including:
-1. Competitive landscape overview
-2. Key market gaps and opportunities
-3. Strategic recommendations
-4. Implementation roadmap
+1. Competitive landscape overview with threshold categorization (Pass/Improve/Fail)
+2. Key market gaps and opportunities based on threshold analysis
+3. Strategic recommendations for each threshold category
+4. Implementation roadmap with specific focus on threshold improvements
+5. Competitor analysis highlighting which products are Pass/Improve/Fail and why
 
-Focus on actionable insights based on the data provided.`
+Focus on actionable insights based on the data provided and emphasize the competitive threshold system for strategic decision-making.`
             }
           ]
         })
@@ -327,29 +336,40 @@ Focus on actionable insights based on the data provided.`
     return `MARKET OPPORTUNITY ANALYSIS
 
 COMPETITIVE LANDSCAPE OVERVIEW:
-Based on the analysis of ${analysis.products.length} products, we've identified key market opportunities and competitive gaps.
+Based on the analysis of ${analysis.products.length} products, we've identified key market opportunities and competitive gaps using the competitive threshold system.
+
+COMPETITIVE THRESHOLD ANALYSIS:
+${sortedProducts.map((calc, index) => {
+  const product = analysis.products.find(p => p.id === calc.productId);
+  const threshold = getScoreThreshold(calc.totalScore);
+  const thresholdIcon = threshold === 'Pass' ? '✅' : threshold === 'Improve' ? '⚠️' : '❌';
+  const rank = index + 1;
+  return `${rank}. ${product?.name || calc.productId} (${product?.asin || 'Unknown'}): ${calc.totalScore}/100 (${thresholdIcon} ${threshold})`;
+}).join('\n')}
 
 TOP PERFORMER ANALYSIS:
-- Highest scoring product: ${topProductData?.asin || topProduct.productId} (Score: ${topProduct.totalScore}/50)
+- Highest scoring product: ${topProductData?.asin || topProduct.productId} (Score: ${topProduct.totalScore}/100)
+- Threshold: ${getScoreThreshold(topProduct.totalScore)} ${getScoreThreshold(topProduct.totalScore) === 'Pass' ? '✅' : getScoreThreshold(topProduct.totalScore) === 'Improve' ? '⚠️' : '❌'}
 - Key strengths: Price optimization, shipping efficiency, review management
 - Market position: Strong competitive advantage
 
 BOTTOM PERFORMER ANALYSIS:
-- Lowest scoring product: ${bottomProductData?.asin || bottomProduct.productId} (Score: ${bottomProduct.totalScore}/50)
+- Lowest scoring product: ${bottomProductData?.asin || bottomProduct.productId} (Score: ${bottomProduct.totalScore}/100)
+- Threshold: ${getScoreThreshold(bottomProduct.totalScore)} ${getScoreThreshold(bottomProduct.totalScore) === 'Pass' ? '✅' : getScoreThreshold(bottomProduct.totalScore) === 'Improve' ? '⚠️' : '❌'}
 - Key weaknesses: Pricing strategy, shipping times, review management
 - Improvement opportunities: Significant potential for optimization
 
-STRATEGIC RECOMMENDATIONS:
-1. PRICING STRATEGY: Analyze top performer's pricing model and implement competitive pricing
-2. SHIPPING OPTIMIZATION: Reduce shipping times to match or beat top performers
-3. REVIEW MANAGEMENT: Implement strategies to improve review scores and volume
-4. COMPETITIVE POSITIONING: Focus on areas where competitors are weakest
+STRATEGIC RECOMMENDATIONS BY THRESHOLD:
+1. PASS THRESHOLD (75+ points): Maintain current strategy, focus on market leadership
+2. IMPROVE THRESHOLD (40-74 points): Target specific improvement areas to reach Pass threshold
+3. FAIL THRESHOLD (<40 points): Consider major strategic changes or discontinuation
 
 IMPLEMENTATION ROADMAP:
 - Phase 1: Immediate pricing adjustments based on top performer analysis
-- Phase 2: Shipping optimization and logistics improvements
+- Phase 2: Shipping optimization and logistics improvements  
 - Phase 3: Review and rating enhancement strategies
 - Phase 4: Continuous monitoring and competitive response
+- Phase 5: Threshold-based strategic positioning
 
 Note: This analysis is based on available data. For more detailed AI-powered insights, please configure your Anthropic API key.`;
   } catch (error) {

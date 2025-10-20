@@ -61,7 +61,7 @@ export default function ProductDataDisplay({
 
   // Handle removing additional image
   const handleRemoveAdditionalImage = (imageIndex: number) => {
-    const updatedAdditionalImages = product.images.additionalImages.filter((_, idx) => idx !== imageIndex);
+    const updatedAdditionalImages = (product.images?.additionalImages || []).filter((_, idx) => idx !== imageIndex);
     onUpdate(index, {
       images: {
         ...product.images,
@@ -205,7 +205,7 @@ export default function ProductDataDisplay({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <EditableField
           label="Price"
-          value={`$${product.price.toFixed(2)}`}
+          value={`$${(product.price || 0).toFixed(2)}`}
           isEditing={isEditing}
           onEdit={(val) => onUpdate(index, { price: parseFloat(val.replace('$', '')) })}
           type="text"
@@ -213,7 +213,7 @@ export default function ProductDataDisplay({
         
         <EditableField
           label="Shipping"
-          value={`${product.shippingDays} days`}
+          value={`${product.shippingDays || 0} days`}
           isEditing={isEditing}
           onEdit={(val) => onUpdate(index, { shippingDays: parseInt(val) })}
           type="number"
@@ -221,7 +221,7 @@ export default function ProductDataDisplay({
         
         <EditableField
           label="Reviews"
-          value={product.reviewCount.toLocaleString()}
+          value={(product.reviewCount || 0).toLocaleString()}
           isEditing={isEditing}
           onEdit={(val) => onUpdate(index, { reviewCount: parseInt(val.replace(/,/g, '')) })}
           type="number"
@@ -229,7 +229,7 @@ export default function ProductDataDisplay({
         
         <EditableField
           label="Rating"
-          value={product.rating.toFixed(1)}
+          value={(product.rating || 0).toFixed(1)}
           isEditing={isEditing}
           onEdit={(val) => onUpdate(index, { rating: parseFloat(val) })}
           type="number"
@@ -244,7 +244,7 @@ export default function ProductDataDisplay({
           {/* Main Image */}
           <div className="flex-shrink-0">
             <p className="text-xs text-gray-600 mb-1">Main Image</p>
-            {product.images.mainImage ? (() => {
+            {product.images?.mainImage ? (() => {
               const uniqueKey = `${product.asin}-main-${imageRenderKey}`;
               const imageSrc = (product.images.mainImage as any).base64 || (product.images.mainImage as any).url || '';
               
@@ -289,9 +289,9 @@ export default function ProductDataDisplay({
           <div className="flex-1">
             <div className="flex items-center justify-between mb-1">
               <p className="text-xs text-gray-600">
-                Additional Images ({product.images.additionalImages.length})
+                Additional Images ({(product.images?.additionalImages || []).length})
               </p>
-              {product.images.additionalImages.length > 4 && (
+              {(product.images?.additionalImages || []).length > 4 && (
                 <button
                   onClick={() => setShowAllImages(!showAllImages)}
                   className="text-xs text-blue-600 hover:underline"
@@ -302,8 +302,8 @@ export default function ProductDataDisplay({
             </div>
             <div className="flex flex-wrap gap-2">
               {(showAllImages 
-                ? product.images.additionalImages 
-                : product.images.additionalImages.slice(0, 4)
+                ? (product.images?.additionalImages || [])
+                : (product.images?.additionalImages || []).slice(0, 4)
               ).map((img: any, idx) => {
                 // Create unique key to prevent browser caching issues
                 const uniqueKey = `${product.asin}-additional-${idx}-${imageRenderKey}`;

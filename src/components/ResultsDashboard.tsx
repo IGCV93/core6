@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAnalysis } from '@/contexts/AnalysisContext';
 import { calculateAllScores, validateCalculations } from '@/lib/scoring';
-import { downloadFile } from '@/lib/utils';
+import { downloadFile, getScoreThreshold, getScoreThresholdColor, getScoreThresholdIcon } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -227,8 +227,15 @@ export default function ResultsDashboard() {
                   </h3>
                   <div className="flex items-center justify-center space-x-2">
                     <Badge variant="success" className="text-lg px-4 py-2">
-                      {topPerformer.totalScore}/130 points
+                      {topPerformer.totalScore}/100 points
                     </Badge>
+                    {state.analysisType === 'core6' && (
+                      <Badge 
+                        className={`text-lg px-4 py-2 border ${getScoreThresholdColor(getScoreThreshold(topPerformer.totalScore))}`}
+                      >
+                        {getScoreThresholdIcon(getScoreThreshold(topPerformer.totalScore))} {getScoreThreshold(topPerformer.totalScore)}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </div>
@@ -324,41 +331,50 @@ export default function ResultsDashboard() {
                       </td>
                       <td className="text-center py-4 px-4">
                         <Badge variant="outline" className="font-medium">
-                          {calc.priceScore}/10
+                          {calc.priceScore}/30
                         </Badge>
                       </td>
                       <td className="text-center py-4 px-4">
                         <Badge variant="outline" className="font-medium">
-                          {calc.shippingScore}/10
+                          {calc.shippingScore}/15
                         </Badge>
                       </td>
                       <td className="text-center py-4 px-4">
                         <Badge variant="outline" className="font-medium">
-                          {calc.reviewScore}/30
+                          {calc.reviewScore}/10
                         </Badge>
                       </td>
                       <td className="text-center py-4 px-4">
                         <Badge variant="outline" className="font-medium">
-                          {calc.ratingScore}/30
+                          {calc.ratingScore}/15
                         </Badge>
                       </td>
                       <td className="text-center py-4 px-4">
                         <Badge variant="outline" className="font-medium">
-                          {(calc.mainImageScore + calc.imageStackScore)}/20
+                          {(calc.mainImageScore + calc.imageStackScore)}/15
                         </Badge>
                       </td>
                       <td className="text-center py-4 px-4">
                         <Badge variant="outline" className="font-medium">
-                          {calc.featuresScore}/30
+                          {calc.featuresScore}/15
                         </Badge>
                       </td>
                       <td className="text-center py-4 px-4">
-                        <Badge 
-                          variant={isTopPerformer ? "success" : "default"} 
-                          className="font-bold text-lg px-3 py-1"
-                        >
-                          {calc.totalScore}/130
-                        </Badge>
+                        <div className="flex flex-col items-center space-y-2">
+                          <Badge 
+                            variant={isTopPerformer ? "success" : "default"} 
+                            className="font-bold text-lg px-3 py-1"
+                          >
+                            {calc.totalScore}/100
+                          </Badge>
+                          {state.analysisType === 'core6' && (
+                            <Badge 
+                              className={`text-sm px-2 py-1 border ${getScoreThresholdColor(getScoreThreshold(calc.totalScore))}`}
+                            >
+                              {getScoreThresholdIcon(getScoreThreshold(calc.totalScore))} {getScoreThreshold(calc.totalScore)}
+                            </Badge>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

@@ -1,5 +1,6 @@
 import { Document, Packer, Paragraph, TextRun, UnderlineType } from 'docx';
 import { Analysis, Product, ScoreCalculation, PollResult } from './types';
+import { getScoreThreshold, getScoreThresholdDescription } from './utils';
 
 export interface WordReportOptions {
   preparedBy?: string;
@@ -248,7 +249,7 @@ function generateProductSection(
     new Paragraph({
       children: [
         new TextRun({
-          text: `Score out of 130: ${calculation.totalScore}`,
+          text: `Score out of 100: ${calculation.totalScore}`,
           bold: true
         })
       ],
@@ -359,8 +360,11 @@ function generateAnalysis(
     parts.push(`Shipping time (${product.shippingDays} days) is slower than competitors.`);
   }
   
-  // Overall Score
-  parts.push(`Overall competitive score: ${calculation.totalScore}/130.`);
+  // Overall Score with Threshold Analysis
+  const threshold = getScoreThreshold(calculation.totalScore);
+  const thresholdDescription = getScoreThresholdDescription(threshold);
+  
+  parts.push(`Overall competitive score: ${calculation.totalScore}/100 (${threshold}). ${thresholdDescription}`);
   
   return parts.join(' ');
 }
@@ -556,11 +560,11 @@ USER PRODUCT ANALYSIS:
 - Current Shipping: ${userProduct.shippingDays} days (${shippingGapToMin > 0 ? `${shippingGapToMin} days SLOWER` : 'FASTEST'} than fastest competitor)
 - Current Rating: ${userProduct.rating}/5 stars (${ratingGapToMax > 0 ? `${ratingGapToMax.toFixed(1)} stars BELOW` : 'MATCHES'} highest competitor rating)
 - Current Reviews: ${userProduct.reviewCount.toLocaleString()} reviews
-- Current Score: ${userCalculation.totalScore}/130 (${scoreGapToLeader > 0 ? `${scoreGapToLeader} points BELOW` : 'LEADING'} market leader)
+- Current Score: ${userCalculation.totalScore}/100 (${scoreGapToLeader > 0 ? `${scoreGapToLeader} points BELOW` : 'LEADING'} market leader)
 - Current Rank: #${userRank} of ${analysis.products.length} products
 
 COMPETITIVE GAPS IDENTIFIED:
-- Score Gap: ${scoreGapToLeader} points behind market leader (${maxCompScore}/130 vs ${userCalculation.totalScore}/130)
+- Score Gap: ${scoreGapToLeader} points behind market leader (${maxCompScore}/100 vs ${userCalculation.totalScore}/100)
 - Price Gap: $${priceGapToAvg.toFixed(2)} ${priceGapToAvg > 0 ? 'above' : 'below'} competitor average
 - Rating Gap: ${ratingGapToMax.toFixed(1)} stars ${ratingGapToMax > 0 ? 'below' : 'above'} highest competitor
 - Shipping Gap: ${shippingGapToMin} days ${shippingGapToMin > 0 ? 'slower' : 'faster'} than fastest competitor
@@ -572,7 +576,7 @@ ${competitors.map((comp, idx) => {
   const scoreDiff = (compCalculation?.totalScore || 0) - userCalculation.totalScore;
   return `
 ${compRank}. ${comp.name} (ASIN: ${comp.asin})
-   - Score: ${compCalculation?.totalScore || 0}/130 (${scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff} vs user)
+   - Score: ${compCalculation?.totalScore || 0}/100 (${scoreDiff > 0 ? `+${scoreDiff}` : scoreDiff} vs user)
    - Price: $${comp.price} (${comp.price - userProduct.price > 0 ? `+$${(comp.price - userProduct.price).toFixed(2)}` : `$${(comp.price - userProduct.price).toFixed(2)}`} vs user)
    - Rating: ${comp.rating}/5 stars (${comp.rating - userProduct.rating > 0 ? `+${(comp.rating - userProduct.rating).toFixed(1)}` : (comp.rating - userProduct.rating).toFixed(1)} vs user)
    - Shipping: ${comp.shippingDays} days (${comp.shippingDays - userProduct.shippingDays > 0 ? `+${comp.shippingDays - userProduct.shippingDays}` : comp.shippingDays - userProduct.shippingDays} vs user)
@@ -619,7 +623,7 @@ Provide SPECIFIC, METRIC-DRIVEN recommendations based on the exact data above:
    - Exact price targets (e.g., "Reduce price by $X to match competitor Y")
    - Specific rating targets (e.g., "Improve rating from X to Y stars")
    - Concrete shipping targets (e.g., "Reduce shipping from X to Y days")
-   - Specific score improvements (e.g., "Increase score by X points to reach Y/130")
+   - Specific score improvements (e.g., "Increase score by X points to reach Y/100")
 
 Format your response as:
 DEEP DIVE ANALYSIS:
