@@ -37,17 +37,28 @@ export default function DataCollectionEnhanced() {
   // const totalProducts = getTotalProducts(state); // Unused for now
 
   // Check if we already have products in the state (user navigated back)
+  const totalProducts = state.analysisType === 'core6' ? 6 : 5;
   const hasExistingProducts = state.products.length > 0;
+  const allProductsCollected = state.products.length >= totalProducts;
 
   // Handler functions - defined early to avoid reference errors
   const handleProductUpdate = (index: number, updates: Partial<CompleteProductData>) => {
-    const updated = [...fetchedProducts];
-    updated[index] = { ...updated[index], ...updates };
-    setFetchedProducts(updated);
+    // For manual entry, update the global state directly
+    if (collectionMethod === 'manual' && hasExistingProducts) {
+      dispatch({ type: 'UPDATE_PRODUCT', payload: { index, product: { ...state.products[index], ...updates } } });
+    } else {
+      // For fetched products, update local state
+      const updated = [...fetchedProducts];
+      updated[index] = { ...updated[index], ...updates };
+      setFetchedProducts(updated);
+    }
   };
 
   const handleProductRefresh = async (index: number) => {
-    const product = fetchedProducts[index];
+    const product = collectionMethod === 'manual' && hasExistingProducts 
+      ? state.products[index] 
+      : fetchedProducts[index];
+    
     if (!product) return;
 
     setRefreshingProducts(prev => new Set(prev).add(index));
@@ -61,9 +72,16 @@ export default function DataCollectionEnhanced() {
 
       if (response.ok) {
         const refreshedData = await response.json();
-        const updated = [...fetchedProducts];
-        updated[index] = refreshedData.product;
-        setFetchedProducts(updated);
+        
+        if (collectionMethod === 'manual' && hasExistingProducts) {
+          // For manual entry, update global state
+          dispatch({ type: 'UPDATE_PRODUCT', payload: { index, product: refreshedData.product } });
+        } else {
+          // For fetched products, update local state
+          const updated = [...fetchedProducts];
+          updated[index] = refreshedData.product;
+          setFetchedProducts(updated);
+        }
       } else {
         console.error('Failed to refresh product:', product.asin);
       }
@@ -83,14 +101,19 @@ export default function DataCollectionEnhanced() {
   };
 
   const handleConfirmAll = () => {
-    // Convert all fetched products to Product format
-    const products: Product[] = fetchedProducts.map((completeData, index) => convertToProduct(completeData, index));
-    
-    // Add products to global state
-    dispatch({ type: 'SET_PRODUCTS_BULK', payload: products });
-    
-    // Move to next step (polls)
-    dispatch({ type: 'SET_CURRENT_STEP', payload: 3 });
+    if (collectionMethod === 'manual' && hasExistingProducts) {
+      // For manual entry, products are already in global state, just navigate to next step
+      dispatch({ type: 'NAVIGATE_TO_STEP', payload: { step: 3 } });
+    } else {
+      // For fetched products, convert and add to global state
+      const products: Product[] = fetchedProducts.map((completeData, index) => convertToProduct(completeData, index));
+      
+      // Add products to global state
+      dispatch({ type: 'SET_PRODUCTS_BULK', payload: products });
+      
+      // Move to next step (polls)
+      dispatch({ type: 'SET_CURRENT_STEP', payload: 3 });
+    }
   };
   
   // If we have existing products, show the data collection interface instead of method selector
@@ -319,8 +342,8 @@ export default function DataCollectionEnhanced() {
 
   // Render based on collection method
   if (collectionMethod === 'manual') {
-    // If we have existing products, show them for editing instead of method selector
-    if (hasExistingProducts) {
+    // If we have all products collected, show them for review/editing
+    if (allProductsCollected) {
       return (
         <div className="space-y-6">
           <Card>
@@ -330,22 +353,155 @@ export default function DataCollectionEnhanced() {
                   <Users className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <CardTitle className="text-2xl">Edit Existing Products</CardTitle>
+                  <CardTitle className="text-2xl">Review Manual Data Entry</CardTitle>
                   <CardDescription className="text-lg">
-                    {state.products.length} products ready for editing
+                    {state.products.length} products ready for review
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">
-                Your data has been preserved. You can edit any field or continue to the next step.
+              <p className="text-muted-foreground mb-4">
+                Review the manually entered data below. You can edit any field or continue to the next step.
               </p>
+              
+              {state.analysisType === 'core6' && (
+                <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-start space-x-3">
+                    <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                    <div>
+                      <p className="text-green-800 font-medium">
+                        Core 6 Analysis Configuration
+                      </p>
+                      <p className="text-green-700 text-sm mt-1">
+                        The first product in the list below will be treated as &quot;Your Product&quot; in the analysis. 
+                        The remaining products will be analyzed as competitors.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
-          
-          {/* Manual Data Collection Form with existing data */}
-          <DataCollection />
+
+          {/* Product Display Cards */}
+          {state.products.map((product, idx) => {
+            // Convert Product to CompleteProductData format
+            const completeProduct: CompleteProductData = {
+              asin: product.asin,
+              name: product.name,
+              price: product.price,
+              shippingDays: product.shippingDays,
+              reviewCount: product.reviewCount,
+              rating: product.rating,
+              images: {
+                mainImage: (() => {
+                  if (!product.mainImage) return null;
+                  
+                  if (typeof product.mainImage === 'string') {
+                    // Convert base64 string to blob URL
+                    const base64Data = product.mainImage.replace(/^data:image\/[a-z]+;base64,/, '');
+                    const byteCharacters = atob(base64Data);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                      byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], { type: 'image/jpeg' });
+                    const url = URL.createObjectURL(blob);
+                    return { blob, url, originalUrl: product.mainImage, size: blob.size, type: 'image/jpeg', base64: product.mainImage };
+                  } else {
+                    // Convert base64 object to blob URL
+                    const base64Data = product.mainImage.base64.replace(/^data:image\/[a-z]+;base64,/, '');
+                    const byteCharacters = atob(base64Data);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                      byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], { type: product.mainImage.mediaType });
+                    const url = URL.createObjectURL(blob);
+                    return { blob, url, originalUrl: product.mainImage.base64, size: blob.size, type: product.mainImage.mediaType, base64: product.mainImage.base64 };
+                  }
+                })(),
+                additionalImages: (product.additionalImages || []).map(img => {
+                  if (typeof img === 'string') {
+                    // Convert base64 string to blob URL
+                    const base64Data = img.replace(/^data:image\/[a-z]+;base64,/, '');
+                    const byteCharacters = atob(base64Data);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                      byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], { type: 'image/jpeg' });
+                    const url = URL.createObjectURL(blob);
+                    return { blob, url, originalUrl: img, size: blob.size, type: 'image/jpeg', base64: img };
+                  } else {
+                    // Convert base64 object to blob URL
+                    const base64Data = img.base64.replace(/^data:image\/[a-z]+;base64,/, '');
+                    const byteCharacters = atob(base64Data);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                      byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], { type: img.mediaType });
+                    const url = URL.createObjectURL(blob);
+                    return { blob, url, originalUrl: img.base64, size: blob.size, type: img.mediaType, base64: img.base64 };
+                  }
+                })
+              },
+              features: product.features,
+              validation: {
+                isValid: true,
+                errors: [],
+                warnings: [],
+                data: {}
+              }
+            };
+
+            return (
+              <ProductDataDisplay
+                key={product.asin}
+                product={completeProduct}
+                index={idx}
+                onUpdate={handleProductUpdate}
+                onRefresh={handleProductRefresh}
+                onConfirm={handleProductConfirm}
+                isRefreshing={refreshingProducts.has(idx)}
+                isUserProduct={state.analysisType === 'core6' && idx === 0}
+              />
+            );
+          })}
+
+          {/* Confirm All Button */}
+          <Card className="bg-green-50 border-green-200">
+            <CardContent className="pt-6">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <CheckCircle className="w-6 h-6 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-green-900 text-lg">
+                      {state.products.length} products ready
+                    </p>
+                    <p className="text-green-700">
+                      Review data above and confirm to continue to polls
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleConfirmAll}
+                  size="lg"
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  ✓ Confirm All & Continue to Polls
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       );
     }
@@ -405,10 +561,10 @@ export default function DataCollectionEnhanced() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground mb-4">
-                Review the auto-fetched data below. You can edit any field or refresh individual products.
-              </p>
-              
-              {state.analysisType === 'core6' && (
+              Review the auto-fetched data below. You can edit any field or refresh individual products.
+            </p>
+            
+            {state.analysisType === 'core6' && (
                 <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                   <div className="flex items-start space-x-3">
                     <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
@@ -418,12 +574,12 @@ export default function DataCollectionEnhanced() {
                       </p>
                       <p className="text-green-700 text-sm mt-1">
                         The first product in the list below will be treated as &quot;Your Product&quot; in the analysis. 
-                        The remaining products will be analyzed as competitors.
-                      </p>
+                  The remaining products will be analyzed as competitors.
+                </p>
                     </div>
                   </div>
-                </div>
-              )}
+              </div>
+            )}
             </CardContent>
           </Card>
 
@@ -444,28 +600,28 @@ export default function DataCollectionEnhanced() {
           {/* Confirm All Button */}
           <Card className="bg-green-50 border-green-200">
             <CardContent className="pt-6">
-              <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center">
                 <div className="flex items-center space-x-3">
                   <div className="p-2 bg-green-100 rounded-lg">
                     <CheckCircle className="w-6 h-6 text-green-600" />
                   </div>
-                  <div>
+              <div>
                     <p className="font-semibold text-green-900 text-lg">
-                      {fetchedProducts.length} products ready
-                    </p>
+                  {fetchedProducts.length} products ready
+                </p>
                     <p className="text-green-700">
-                      Review data above and confirm to continue to polls
-                    </p>
-                  </div>
+                  Review data above and confirm to continue to polls
+                </p>
+              </div>
                 </div>
                 <Button
-                  onClick={handleConfirmAll}
+                onClick={handleConfirmAll}
                   size="lg"
                   className="bg-green-600 hover:bg-green-700"
-                >
-                  ✓ Confirm All & Continue to Polls
+              >
+                ✓ Confirm All & Continue to Polls
                 </Button>
-              </div>
+            </div>
             </CardContent>
           </Card>
         </div>

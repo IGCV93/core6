@@ -25,9 +25,23 @@ function MainContent() {
         return <AnalysisTypeSelection />;
       case 2:
         // Use enhanced data collection with automatic scraping
-        return state.collectionMethod === 'manual' 
-          ? <DataCollection />
-          : <DataCollectionEnhanced />;
+        if (state.collectionMethod === 'manual') {
+          // For manual entry, check if all products are collected
+          const totalProducts = state.analysisType === 'core6' ? 6 : 5;
+          if (state.products.length >= totalProducts) {
+            // All products collected, show review screen
+            return <DataCollectionEnhanced />;
+          } else if (state.products.length === 0) {
+            // No products yet, show entry form
+            return <DataCollection />;
+          } else {
+            // Some products collected but not all, show entry form
+            return <DataCollection />;
+          }
+        } else {
+          // Automatic collection
+          return <DataCollectionEnhanced />;
+        }
       case 3:
         return <PollingInterface />;
       case 4:

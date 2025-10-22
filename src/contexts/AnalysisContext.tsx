@@ -24,6 +24,17 @@ type AnalysisAction =
   | { type: 'SET_PRODUCT_CATEGORY'; payload: string }
   | { type: 'RESET_ANALYSIS' };
 
+// Save state to localStorage
+const saveStateToStorage = (state: AppState) => {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('amazon-analysis-state', JSON.stringify(state));
+    } catch (error) {
+      console.error('Failed to save state to localStorage:', error);
+    }
+  }
+};
+
 // Load state from localStorage on initialization
 const loadStateFromStorage = (): AppState => {
   if (typeof window === 'undefined') {
@@ -81,15 +92,6 @@ const loadStateFromStorage = (): AppState => {
 
 const initialState: AppState = loadStateFromStorage();
 
-// Auto-save function
-const saveStateToStorage = (state: AppState) => {
-  if (typeof window !== 'undefined') {
-    try {
-      localStorage.setItem('amazon-analysis-state', JSON.stringify(state));
-    } catch (error) {
-    }
-  }
-};
 
 function analysisReducer(state: AppState, action: AnalysisAction): AppState {
   let newState: AppState;
@@ -220,6 +222,14 @@ function analysisReducer(state: AppState, action: AnalysisAction): AppState {
       newState = {
         ...state,
         productCategory: action.payload,
+      };
+      saveStateToStorage(newState);
+      return newState;
+
+    case 'SET_CURRENT_PRODUCT_INDEX':
+      newState = {
+        ...state,
+        currentProductIndex: action.payload,
       };
       saveStateToStorage(newState);
       return newState;

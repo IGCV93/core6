@@ -152,20 +152,29 @@ export default function DataCollection() {
 
     dispatch({ type: 'ADD_PRODUCT', payload: product });
 
-    // Reset form for next product
-    setCurrentData({
-      id: generateId(),
-      asin: '',
-      name: '',
-      price: 0,
-      shippingDays: 0,
-      reviewCount: 0,
-      rating: 0,
-      mainImage: '',
-      additionalImages: [],
-      features: '',
-    });
-    setOcrResults(null);
+    // Check if this is the last product (after adding the product)
+    const nextIndex = currentIndex + 1;
+    const isLastProductAfterAdd = nextIndex >= totalProducts;
+    
+    if (isLastProductAfterAdd) {
+      // All products collected, the main page logic will show the review screen
+      // No need to navigate - the page will re-render and show DataCollectionEnhanced
+    } else {
+      // Reset form for next product (currentProductIndex is already incremented by ADD_PRODUCT)
+      setCurrentData({
+        id: generateId(),
+        asin: '',
+        name: '',
+        price: 0,
+        shippingDays: 0,
+        reviewCount: 0,
+        rating: 0,
+        mainImage: '',
+        additionalImages: [],
+        features: '',
+      });
+      setOcrResults(null);
+    }
   };
 
   const isLastProduct = currentIndex >= totalProducts - 1;

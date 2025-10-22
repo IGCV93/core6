@@ -246,12 +246,13 @@ export default function ProductDataDisplay({
             <p className="text-xs text-gray-600 mb-1">Main Image</p>
             {product.images?.mainImage ? (() => {
               const uniqueKey = `${product.asin}-main-${imageRenderKey}`;
-              const imageSrc = (product.images.mainImage as any).base64 || (product.images.mainImage as any).url || '';
+              const imageData = product.images.mainImage as any;
               
-              // Convert base64 to blob URL to force unique rendering
-              const finalSrc = imageSrc.startsWith('data:') 
-                ? base64ToBlobUrl(imageSrc, (product.images.mainImage as any).type || 'image/jpeg')
-                : imageSrc;
+              // Use blob URL if available, otherwise convert base64
+              const finalSrc = imageData.url || (imageData.base64 ? 
+                (imageData.base64.startsWith('data:') ? 
+                  base64ToBlobUrl(imageData.base64, imageData.type || 'image/jpeg') : 
+                  imageData.base64) : '');
               
               
               return (
@@ -307,12 +308,12 @@ export default function ProductDataDisplay({
               ).map((img: any, idx) => {
                 // Create unique key to prevent browser caching issues
                 const uniqueKey = `${product.asin}-additional-${idx}-${imageRenderKey}`;
-                const imageSrc = img.base64 || img.url || '';
                 
-                // Convert base64 to blob URL to force unique rendering
-                const finalSrc = imageSrc.startsWith('data:') 
-                  ? base64ToBlobUrl(imageSrc, img.type || 'image/jpeg')
-                  : imageSrc;
+                // Use blob URL if available, otherwise convert base64
+                const finalSrc = img.url || (img.base64 ? 
+                  (img.base64.startsWith('data:') ? 
+                    base64ToBlobUrl(img.base64, img.type || 'image/jpeg') : 
+                    img.base64) : '');
                 
                 
                 return (

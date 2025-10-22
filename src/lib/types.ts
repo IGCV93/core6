@@ -122,6 +122,7 @@ export interface ImageData {
   originalUrl: string;
   size: number;
   type: string;
+  base64?: string; // Base64 data for manual entry
 }
 
 /**
