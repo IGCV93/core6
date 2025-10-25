@@ -461,7 +461,7 @@ export default function PollingInterface() {
                         </h4>
                         <div className="text-sm text-muted-foreground space-y-2">
                           <p>Price: ${product.price.toFixed(2)}</p>
-                          <p>Rating: {product.rating} stars ({product.reviewCount.toLocaleString()} reviews)</p>
+                          <p>Rating: {product.rating} stars ({product.reviewCount?.toLocaleString() || 0} reviews)</p>
                           <p className="truncate">Features: {product.features.substring(0, 100)}...</p>
                         </div>
                       </CardContent>

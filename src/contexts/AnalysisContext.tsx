@@ -24,13 +24,100 @@ type AnalysisAction =
   | { type: 'SET_PRODUCT_CATEGORY'; payload: string }
   | { type: 'RESET_ANALYSIS' };
 
-// Save state to localStorage
+// Save state to localStorage (all data including images)
 const saveStateToStorage = (state: AppState) => {
   if (typeof window !== 'undefined') {
+    // Normalize image format before saving to ensure consistency between manual and automatic entry
+    const normalizedState = {
+      ...state,
+      products: state.products.map(p => {
+        // Debug logging
+        const mainImageBefore = p.mainImage;
+        const mainImageAfter = typeof p.mainImage === 'string' 
+          ? p.mainImage 
+          : p.mainImage && typeof p.mainImage === 'object' && p.mainImage.base64
+          ? p.mainImage.base64
+          : '';
+        
+        if (mainImageBefore && !mainImageAfter) {
+          console.warn(`[AnalysisContext] Lost mainImage for product ${p.asin}:`, {
+            originalType: typeof mainImageBefore,
+            originalIsObject: typeof mainImageBefore === 'object',
+            hasBase64: typeof mainImageBefore === 'object' && mainImageBefore.base64 ? 'yes' : 'no'
+          });
+        }
+        
+        return {
+          ...p,
+          // Normalize mainImage: extract base64 string from object format
+          mainImage: mainImageAfter,
+          // Normalize additionalImages: extract base64 strings from object format
+          additionalImages: (p.additionalImages || []).map(img => 
+            typeof img === 'string' 
+              ? img 
+              : img && typeof img === 'object' && img.base64
+              ? img.base64
+              : ''
+          ).filter(img => img !== '')
+        };
+      })
+    };
+    
+    // Check size before saving
+    const jsonString = JSON.stringify(normalizedState);
+    const sizeInMB = new Blob([jsonString]).size / (1024 * 1024);
+    
+    if (sizeInMB > 4) {
+      console.warn(`⚠️ Large state size: ${sizeInMB.toFixed(2)}MB. Approaching localStorage limit (5-10MB)`);
+    }
+    
     try {
-      localStorage.setItem('amazon-analysis-state', JSON.stringify(state));
-    } catch (error) {
-      console.error('Failed to save state to localStorage:', error);
+      localStorage.setItem('amazon-analysis-state', jsonString);
+    } catch (error: any) {
+      // Handle QuotaExceededError gracefully
+      if (error.name === 'QuotaExceededError' || error.code === 22) {
+        console.warn('localStorage quota exceeded. Attempting to clear old data and retry...');
+        // Clear old data and try once more
+        try {
+          localStorage.removeItem('amazon-analysis-state');
+          localStorage.setItem('amazon-analysis-state', JSON.stringify(normalizedState));
+          console.log('Successfully saved after clearing old data');
+        } catch (retryError) {
+          console.error('Failed to save state after clearing old data:', retryError);
+          // Last resort: try to save without images, but warn the user first
+          const userConfirm = window.confirm(
+            '⚠️ CRITICAL WARNING: The storage quota has been exceeded.\n\n' +
+            'Your images cannot be saved. You have two options:\n\n' +
+            '1. OK: Save the data WITHOUT images (you will need to re-enter them later)\n' +
+            '2. Cancel: This will prevent saving and you may lose your work\n\n' +
+            'We recommend clicking Cancel and reducing the number of products or image sizes.'
+          );
+          
+          if (userConfirm) {
+            try {
+              const stateWithoutImages = {
+                ...state,
+                products: state.products.map(p => ({
+                  ...p,
+                  mainImage: '',
+                  additionalImages: []
+                }))
+              };
+              localStorage.setItem('amazon-analysis-state', JSON.stringify(stateWithoutImages));
+              console.warn('⚠️ CRITICAL: Saved state without images as fallback due to localStorage quota');
+              alert('Data saved WITHOUT images. You will need to re-enter them.');
+            } catch (fallbackError) {
+              console.error('Failed to save state even without images:', fallbackError);
+              alert('Failed to save data. Please reduce the number of products or image sizes.');
+            }
+          } else {
+            console.warn('User cancelled save operation due to storage quota exceeded');
+            alert('Save cancelled. Your data is not saved. Please reduce product count or image sizes.');
+          }
+        }
+      } else {
+        console.error('Failed to save state to localStorage:', error);
+      }
     }
   }
 };

@@ -1,14 +1,26 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAnalysis, getCurrentProductType, getTotalProducts } from '@/contexts/AnalysisContext';
 import { generateId, convertToBase64WithMediaType, validateASIN, validatePrice, validateRating, validateReviewCount } from '@/lib/utils';
-import { Product } from '@/lib/types';
+import { Product, CompleteProductData, ProcessedImages, ValidationResult } from '@/lib/types';
 import { useToast } from '@/contexts/ToastContext';
+import { ImageProcessor, ImageData } from '@/lib/image-processor';
 
 export default function DataCollection() {
   const { state, dispatch } = useAnalysis();
   const { addToast } = useToast();
+  
+  // Initialize ImageProcessor for manual entry
+  const imageProcessor = useRef<ImageProcessor>(new ImageProcessor());
+  
+  // Cleanup ImageProcessor on unmount
+  useEffect(() => {
+    return () => {
+      imageProcessor.current.cleanup();
+    };
+  }, []);
+  
   const [currentData, setCurrentData] = useState<Partial<Product>>({
     id: generateId(),
     asin: '',
@@ -83,48 +95,243 @@ export default function DataCollection() {
     }
   };
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, type: 'main' | 'additional') => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, type: 'main' | 'additional') => {
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
 
-    Promise.all(files.map(convertToBase64WithMediaType)).then(imageData => {
+    try {
+      // Convert files to base64 first (with compression)
+      const imageData = await Promise.all(files.map(convertToBase64WithMediaType));
+      
+      // Create temporary URLs for ImageProcessor (it expects URLs, not base64)
+      const tempUrls: string[] = [];
+      const tempBlobs: Blob[] = [];
+      
+      for (const img of imageData) {
+        // Convert base64 to Blob
+        const byteString = atob(img.base64);
+        const arrayBuffer = new ArrayBuffer(byteString.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < byteString.length; i++) {
+          uint8Array[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([arrayBuffer], { type: img.mediaType });
+        tempBlobs.push(blob);
+        
+        // Create object URL
+        const objectUrl = URL.createObjectURL(blob);
+        tempUrls.push(objectUrl);
+      }
+      
+      // Process images through ImageProcessor for caching and deduplication
+      const processedImages = await imageProcessor.current.processProductImages(tempUrls);
+      
+      // Clean up temporary URLs
+      tempUrls.forEach(url => URL.revokeObjectURL(url));
+      
       if (type === 'main') {
-        setCurrentData(prev => ({ 
-          ...prev, 
-          mainImage: {
-            base64: imageData[0].base64,
-            mediaType: imageData[0].mediaType
+        if (processedImages.mainImage) {
+          try {
+            // Convert back to base64 for storage
+            const base64 = await imageProcessor.current.blobToBase64(processedImages.mainImage.blob);
+            const base64String = base64.split(',')[1]; // Remove data URL prefix
+            
+            setCurrentData(prev => ({ 
+              ...prev, 
+              mainImage: {
+                base64: base64String,
+                mediaType: processedImages.mainImage!.type
+              }
+            }));
+          } catch (error) {
+            console.error('[Manual Entry] Failed to process main image:', error);
+            addToast({
+              title: 'Main Image Error',
+              description: 'Failed to process main image. Please try again.',
+              variant: 'destructive'
+            });
           }
-        }));
+        }
       } else {
-        setCurrentData(prev => ({ 
-          ...prev, 
+        // For additional images, process each uploaded file directly
+        const existingCount = currentData.additionalImages?.length || 0;
+        const availableSlots = 8 - existingCount;
+        const maxNewImages = Math.min(files.length, availableSlots);
+        
+        // Process each file directly without ImageProcessor's product logic
+        const base64Images = await Promise.all(
+          imageData.slice(0, maxNewImages).map(async (img, idx) => {
+            try {
+              return {
+                base64: img.base64,
+                mediaType: img.mediaType
+              };
+            } catch (error) {
+              console.error(`Failed to process additional image ${idx + 1}:`, error);
+              return null;
+            }
+          })
+        );
+        
+        // Filter out failed images
+        const validImages = base64Images.filter(img => img !== null);
+        
+        setCurrentData(prev => ({
+          ...prev,
           additionalImages: [
-            ...(prev.additionalImages || []), 
-            ...imageData.map(img => ({
-              base64: img.base64,
-              mediaType: img.mediaType
-            }))
+            ...(prev.additionalImages || []),
+            ...validImages
           ]
         }));
       }
-    });
+      
+      // Show success message
+      addToast({
+        title: `Images processed successfully`,
+        description: `Successfully uploaded ${files.length} image${files.length > 1 ? 's' : ''}`,
+        variant: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error processing images:', error);
+      addToast({ 
+        title: 'Failed to process images', 
+        variant: 'destructive' 
+      });
+    }
   };
 
   const validateForm = (): boolean => {
-    return !!(
-      currentData.asin && validateASIN(currentData.asin) &&
-      currentData.name &&
-      currentData.price && validatePrice(currentData.price) &&
-      (currentData.shippingDays ?? 0) >= 0 &&
-      (currentData.reviewCount ?? 0) >= 0 && validateReviewCount(currentData.reviewCount ?? 0) &&
-      (currentData.rating ?? 0) >= 0 && validateRating(currentData.rating ?? 0) &&
-      currentData.mainImage && (typeof currentData.mainImage === 'string' || (currentData.mainImage && typeof currentData.mainImage === 'object' && currentData.mainImage.base64)) &&
-      currentData.features && currentData.features.length >= 100
-    );
+    const validation = {
+      asin: !!(currentData.asin && validateASIN(currentData.asin)),
+      name: !!currentData.name,
+      price: !!(currentData.price && validatePrice(currentData.price)),
+      shipping: (currentData.shippingDays ?? 0) >= 0,
+      reviewCount: (currentData.reviewCount ?? 0) >= 0 && validateReviewCount(currentData.reviewCount ?? 0),
+      rating: (currentData.rating ?? 0) >= 0 && validateRating(currentData.rating ?? 0),
+      mainImage: !!(currentData.mainImage && (typeof currentData.mainImage === 'string' || (currentData.mainImage && typeof currentData.mainImage === 'object' && currentData.mainImage.base64))),
+      features: !!(currentData.features && currentData.features.length >= 100)
+    };
+    
+    
+    return Object.values(validation).every(v => v === true);
   };
 
-  const handleSaveAndContinue = () => {
+  // Create CompleteProductData for manual entry (same as automatic fetch)
+  const createCompleteProductData = async (): Promise<CompleteProductData> => {
+    // Create ProcessedImages from current data
+    const processedImages: ProcessedImages = {
+      mainImage: null,
+      additionalImages: []
+    };
+
+    // Process main image if exists
+    if (currentData.mainImage && typeof currentData.mainImage === 'object' && currentData.mainImage.base64) {
+      try {
+        // Convert base64 to Blob
+        const base64Data = currentData.mainImage.base64;
+        const byteString = atob(base64Data);
+        const arrayBuffer = new ArrayBuffer(byteString.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < byteString.length; i++) {
+          uint8Array[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([arrayBuffer], { type: currentData.mainImage.mediaType });
+        const objectUrl = URL.createObjectURL(blob);
+        
+        processedImages.mainImage = {
+          blob,
+          url: objectUrl,
+          originalUrl: objectUrl,
+          size: blob.size,
+          type: currentData.mainImage.mediaType,
+          base64: currentData.mainImage.base64
+        };
+      } catch (error) {
+        console.error('Failed to process main image:', error);
+      }
+    }
+
+    // Process additional images
+    if (currentData.additionalImages && currentData.additionalImages.length > 0) {
+      for (const img of currentData.additionalImages) {
+        if (typeof img === 'object' && img.base64) {
+          try {
+            const base64Data = img.base64;
+            const byteString = atob(base64Data);
+            const arrayBuffer = new ArrayBuffer(byteString.length);
+            const uint8Array = new Uint8Array(arrayBuffer);
+            for (let i = 0; i < byteString.length; i++) {
+              uint8Array[i] = byteString.charCodeAt(i);
+            }
+            const blob = new Blob([arrayBuffer], { type: img.mediaType });
+            const objectUrl = URL.createObjectURL(blob);
+            
+            processedImages.additionalImages.push({
+              blob,
+              url: objectUrl,
+              originalUrl: objectUrl,
+              size: blob.size,
+              type: img.mediaType,
+              base64: img.base64
+            });
+          } catch (error) {
+            console.error('Failed to process additional image:', error);
+          }
+        }
+      }
+    }
+
+    // Create validation result (same as automatic fetch)
+    const validation: ValidationResult = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      data: currentData
+    };
+
+    // Create CompleteProductData (same structure as automatic fetch)
+    const completeData: CompleteProductData = {
+      asin: currentData.asin || '',
+      name: currentData.name || '',
+      price: currentData.price || 0,
+      originalPrice: null,
+      shippingDays: currentData.shippingDays || 0,
+      reviewCount: currentData.reviewCount || 0,
+      rating: currentData.rating || 0,
+      images: processedImages,
+      features: currentData.features || '',
+      validation: validation,
+      rawResponse: null
+    };
+
+    return completeData;
+  };
+
+  // Convert CompleteProductData to Product (same as automatic fetch)
+  const convertToProduct = (completeData: CompleteProductData): Product => {
+    // Extract base64 from ImageData objects (same as automatic fetch)
+    const mainImage = completeData.images?.mainImage?.base64 || '';
+    const additionalImages = completeData.images?.additionalImages?.map(img => 
+      img.base64 || ''
+    ) || [];
+    
+    return {
+      id: generateId(),
+      asin: completeData.asin,
+      name: completeData.name,
+      price: completeData.price,
+      shippingDays: completeData.shippingDays,
+      reviewCount: completeData.reviewCount,
+      rating: completeData.rating,
+      mainImage,
+      additionalImages,
+      features: completeData.features,
+      isUserProduct: state.analysisType === 'core6' && currentIndex === 0
+    };
+  };
+
+  const handleSaveAndContinue = async () => {
     if (!validateForm()) {
       // Provide specific feedback about what's missing
       const missingFields = [];
@@ -145,12 +352,24 @@ export default function DataCollection() {
       return;
     }
 
-    const product: Product = {
-      ...currentData,
-      isUserProduct: state.analysisType === 'core6' && currentIndex === 0,
-    } as Product;
-
-    dispatch({ type: 'ADD_PRODUCT', payload: product });
+    try {
+      // Create CompleteProductData (same as automatic fetch)
+      const completeData = await createCompleteProductData();
+      
+      // Convert to Product format (same as automatic fetch)
+      const product = convertToProduct(completeData);
+      
+      // Store in state (same as automatic fetch)
+      dispatch({ type: 'ADD_PRODUCT', payload: product });
+    } catch (error) {
+      console.error('Failed to save product:', error);
+      addToast({
+        title: 'Save Failed',
+        description: 'Failed to save product data. Please try again.',
+        variant: 'destructive'
+      });
+      return;
+    }
 
     // Check if this is the last product (after adding the product)
     const nextIndex = currentIndex + 1;
@@ -354,20 +573,102 @@ export default function DataCollection() {
                 onChange={(e) => handleImageUpload(e, 'main')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              
+              {/* Display main image preview */}
+              {currentData.mainImage && (
+                <div className="mt-2">
+                  <div className="relative inline-block group">
+                    {(() => {
+                      // Get the image source - handle both string and object formats
+                      const imageSrc = typeof currentData.mainImage === 'string' 
+                        ? currentData.mainImage 
+                        : (currentData.mainImage.base64 ? `data:${currentData.mainImage.mediaType};base64,${currentData.mainImage.base64}` : '');
+                      
+                      return (
+                        <img
+                          src={imageSrc}
+                          alt="Main product"
+                          className="w-32 h-32 object-cover rounded border border-gray-300"
+                          onError={(e) => {
+                            console.error('Failed to load main image:', imageSrc.substring(0, 50));
+                          }}
+                        />
+                      );
+                    })()}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentData(prev => ({ ...prev, mainImage: '' }));
+                      }}
+                      className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Additional Images */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Additional Images (up to 8)
+                {currentData.additionalImages && currentData.additionalImages.length > 0 && (
+                  <span className="ml-2 text-blue-600">
+                    ({currentData.additionalImages.length}/8)
+                  </span>
+                )}
               </label>
               <input
                 type="file"
                 accept="image/*"
                 multiple
                 onChange={(e) => handleImageUpload(e, 'additional')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={currentData.additionalImages && currentData.additionalImages.length >= 8}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
+              {currentData.additionalImages && currentData.additionalImages.length >= 8 && (
+                <p className="text-sm text-gray-500 mt-1">
+                  Maximum of 8 images reached
+                </p>
+              )}
+              
+              {/* Display uploaded images */}
+              {currentData.additionalImages && currentData.additionalImages.length > 0 && (
+                <div className="mt-2 grid grid-cols-4 gap-2">
+                  {currentData.additionalImages.map((img, idx) => {
+                    // Get the image source - handle both string and object formats
+                    const imageSrc = typeof img === 'string' 
+                      ? img 
+                      : (img.base64 ? `data:${img.mediaType};base64,${img.base64}` : '');
+                    
+                    return (
+                      <div key={idx} className="relative group">
+                        <img
+                          src={imageSrc}
+                          alt={`Additional ${idx + 1}`}
+                          className="w-full h-20 object-cover rounded border border-gray-300"
+                          onError={(e) => {
+                            console.error(`Failed to load additional image ${idx + 1}:`, imageSrc.substring(0, 50));
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentData(prev => ({
+                              ...prev,
+                              additionalImages: prev.additionalImages?.filter((_, i) => i !== idx) || []
+                            }));
+                          }}
+                          className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Features Description */}

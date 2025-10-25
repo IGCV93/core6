@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAnalysis } from '@/contexts/AnalysisContext';
 import { CompleteProductData, Product, FetchStatus, DataCollectionMethod } from '@/lib/types';
 import { generateId } from '@/lib/utils';
@@ -33,6 +33,32 @@ export default function DataCollectionEnhanced() {
   const [fetchedProducts, setFetchedProducts] = useState<CompleteProductData[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [refreshingProducts, setRefreshingProducts] = useState<Set<number>>(new Set());
+
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      // Cleanup any blob URLs that were created during image conversion
+      if (state.products) {
+        state.products.forEach(product => {
+          if (product.mainImage && typeof product.mainImage === 'string' && product.mainImage.startsWith('data:')) {
+            try {
+              const base64Data = product.mainImage.replace(/^data:image\/[a-z]+;base64,/, '');
+              const binaryString = atob(base64Data);
+              const bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
+              const blob = new Blob([bytes], { type: 'image/jpeg' });
+              const blobUrl = URL.createObjectURL(blob);
+              URL.revokeObjectURL(blobUrl);
+            } catch {
+              // Ignore cleanup errors
+            }
+          }
+        });
+      }
+    };
+  }, []);
 
   // const totalProducts = getTotalProducts(state); // Unused for now
 
@@ -117,28 +143,102 @@ export default function DataCollectionEnhanced() {
   };
   
   // If we have existing products, show the data collection interface instead of method selector
-  if (hasExistingProducts && collectionMethod === 'automatic') {
-    // Convert existing products to the format expected by the component
-    const existingProducts = state.products.map(product => ({
-      asin: product.asin,
-      name: product.name,
-      price: product.price,
-      shippingDays: product.shippingDays,
-      reviewCount: product.reviewCount,
-      rating: product.rating,
-      images: {
-        mainImage: typeof product.mainImage === 'string' 
-          ? { blob: new Blob(), url: product.mainImage, originalUrl: product.mainImage, size: 0, type: 'image/jpeg' }
-          : null,
-        additionalImages: (product.additionalImages || []).map(img => 
-          typeof img === 'string' 
-            ? { blob: new Blob(), url: img, originalUrl: img, size: 0, type: 'image/jpeg' }
-            : { blob: new Blob(), url: img.base64, originalUrl: img.base64, size: 0, type: img.mediaType }
-        )
-      },
-      features: product.features,
-      validation: { isValid: true, errors: [], warnings: [], data: product }
-    }));
+        if (hasExistingProducts && collectionMethod === 'automatic') {
+          // Convert existing products to the format expected by the component
+          const existingProducts = state.products.map((product, idx) => {
+      
+      return {
+        asin: product.asin,
+        name: product.name,
+        price: product.price,
+        shippingDays: product.shippingDays,
+        reviewCount: product.reviewCount,
+        rating: product.rating,
+        images: {
+          mainImage: (() => {
+            if (!product.mainImage || product.mainImage === '') return null;
+            
+            let base64String = '';
+            let mediaType = 'image/jpeg';
+            
+            if (typeof product.mainImage === 'string') {
+              base64String = product.mainImage;
+            } else if (product.mainImage && typeof product.mainImage === 'object' && product.mainImage.base64) {
+              base64String = product.mainImage.base64;
+              mediaType = product.mainImage.mediaType || 'image/jpeg';
+            }
+            
+            if (!base64String) return null;
+            
+            // Create proper blob URL from base64
+            try {
+              const base64Data = base64String.replace(/^data:image\/[a-z]+;base64,/, '');
+              const binaryString = atob(base64Data);
+              const bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
+              const blob = new Blob([bytes], { type: mediaType });
+              const blobUrl = URL.createObjectURL(blob);
+              
+              
+              return { 
+                blob, 
+                url: blobUrl, 
+                originalUrl: base64String, 
+                size: blob.size, 
+                type: mediaType, 
+                base64: base64String 
+              };
+            } catch (error) {
+              console.error('Failed to create blob URL for main image:', error);
+              return null;
+            }
+          })(),
+          additionalImages: (product.additionalImages || []).map(img => {
+            if (!img || img === '') return null;
+            
+            let base64String = '';
+            let mediaType = 'image/jpeg';
+            
+            if (typeof img === 'string') {
+              base64String = img;
+            } else if (img && typeof img === 'object' && img.base64) {
+              base64String = img.base64;
+              mediaType = img.mediaType || 'image/jpeg';
+            }
+            
+            if (!base64String) return null;
+            
+            // Create proper blob URL from base64
+            try {
+              const base64Data = base64String.replace(/^data:image\/[a-z]+;base64,/, '');
+              const binaryString = atob(base64Data);
+              const bytes = new Uint8Array(binaryString.length);
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
+              const blob = new Blob([bytes], { type: mediaType });
+              const blobUrl = URL.createObjectURL(blob);
+              
+              return { 
+                blob, 
+                url: blobUrl, 
+                originalUrl: base64String, 
+                size: blob.size, 
+                type: mediaType, 
+                base64: base64String 
+              };
+            } catch (error) {
+              console.error('Failed to create blob URL for additional image:', error);
+              return null;
+            }
+          }).filter(img => img !== null)
+        },
+        features: product.features,
+        validation: { isValid: true, errors: [], warnings: [], data: product }
+      };
+    });
 
     return (
       <div className="space-y-6">

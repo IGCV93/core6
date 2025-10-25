@@ -19,7 +19,7 @@ export interface RetryConfig {
  */
 interface ErrorClassification {
   isRetryable: boolean;
-  errorType: 'rate_limit' | 'server_error' | 'network_error' | 'timeout' | 'auth_error' | 'client_error' | 'parsing_error' | 'unknown';
+  errorType: 'rate_limit' | 'server_error' | 'network_error' | 'timeout' | 'auth_error' | 'credit_error' | 'client_error' | 'parsing_error' | 'unknown';
   statusCode?: number;
   message: string;
 }
@@ -110,6 +110,17 @@ export function classifyError(error: any): ErrorClassification {
       isRetryable: true,
       errorType: 'timeout',
       message: 'Request timed out'
+    };
+  }
+  
+  // Credit balance errors - don't retry, need user action
+  if (error?.message?.includes('credit balance is too low') || 
+      error?.message?.includes('credit balance') ||
+      error?.message?.includes('upgrade or purchase credits')) {
+    return {
+      isRetryable: false,
+      errorType: 'credit_error',
+      message: 'API credit balance exhausted'
     };
   }
   
@@ -221,6 +232,8 @@ export function getUserFriendlyErrorMessage(error: any): string {
       return 'Request timed out. The system will automatically retry. Please wait...';
     case 'auth_error':
       return 'API authentication failed. Please check your API key in .env.local and restart the server.';
+    case 'credit_error':
+      return 'No Claude credits available. Please contact the administrator to add credits to your Anthropic account.';
     case 'client_error':
       return 'Invalid image provided. Please upload a clear screenshot of an Amazon product page.';
     case 'parsing_error':

@@ -254,6 +254,14 @@ export default function ProductDataDisplay({
                   base64ToBlobUrl(imageData.base64, imageData.type || 'image/jpeg') : 
                   imageData.base64) : '');
               
+              // Don't render if src is empty
+              if (!finalSrc || finalSrc === '') {
+                return (
+                  <div className="w-24 h-24 bg-gray-200 rounded-lg flex items-center justify-center">
+                    <span className="text-gray-400 text-xs">No Image</span>
+                  </div>
+                );
+              }
               
               return (
                 <div className="relative group">
@@ -315,6 +323,10 @@ export default function ProductDataDisplay({
                     base64ToBlobUrl(img.base64, img.type || 'image/jpeg') : 
                     img.base64) : '');
                 
+                // Don't render if src is empty
+                if (!finalSrc || finalSrc === '') {
+                  return null;
+                }
                 
                 return (
                   <div key={uniqueKey} className="relative group">

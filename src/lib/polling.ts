@@ -15,6 +15,18 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
     // Add unique poll identifier to ensure fresh polls
     const pollId = `poll_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
     
+    console.log('=== POLL SIMULATION START ===');
+    console.log('🔍 DEBUG: Polling function is working with latest changes!');
+    console.log('Poll type:', request.pollType);
+    console.log('Number of products:', request.products.length);
+    console.log('Products data:', request.products.map((p, idx) => ({
+      product: idx + 1,
+      asin: p.asin,
+      hasImages: !!(p as any).images,
+      hasMainImage: !!(p as any).images?.mainImage,
+      mainImageType: (p as any).images?.mainImage ? typeof (p as any).images.mainImage : 'N/A'
+    })));
+    
     const systemPrompt = generateSystemPrompt(request);
     const userPrompt = generateUserPrompt(request);
     
@@ -67,15 +79,23 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
             // Check if it's valid base64
             try {
               atob(base64Data);
-              // Check minimum length - reduce threshold since some valid images are small
-              const isValid = base64Data.length > 500; // At least 500 characters of base64 data
+              // Check minimum length - very lenient for small images
+              const isValid = base64Data.length > 20; // At least 20 characters of base64 data
               
               if (isValid) {
+                console.log('Valid base64 image:', {
+                  length: base64Data.length,
+                  mediaType,
+                  preview: base64Data.substring(0, 20) + '...'
+                });
                 // Return clean base64 data with detected media type
                 return { base64: base64Data, mediaType };
+              } else {
+                console.warn('Base64 data too short:', base64Data.length, 'characters');
+                return null;
               }
-              return null;
-            } catch {
+            } catch (error) {
+              console.warn('Invalid base64 data:', error);
               return null;
             }
           };
@@ -84,7 +104,24 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
           request.products.forEach((product: any, index) => {
             if (product.images) {
               if (request.pollType === 'main_image' && product.images.mainImage) {
-                const rawImageData = product.images.mainImage.base64 || product.images.mainImage;
+                // Handle both string and object formats for mainImage
+                let rawImageData: string;
+                if (typeof product.images.mainImage === 'string') {
+                  rawImageData = product.images.mainImage;
+                } else if (product.images.mainImage.base64) {
+                  rawImageData = product.images.mainImage.base64;
+                } else {
+                  console.warn(`Product ${index + 1}: Invalid mainImage format`, product.images.mainImage);
+                  return;
+                }
+                
+                // Debug logging
+                console.log(`Product ${index + 1} mainImage:`, {
+                  type: typeof product.images.mainImage,
+                  hasBase64: typeof product.images.mainImage === 'object' ? !!product.images.mainImage.base64 : 'N/A',
+                  dataLength: rawImageData ? rawImageData.length : 0,
+                  dataStart: rawImageData ? rawImageData.substring(0, 50) : 'N/A'
+                });
                 
                 const processedImage = processBase64Image(rawImageData);
                 if (processedImage) {
@@ -112,7 +149,16 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
                 // Add ONLY additional images (the "stack") - NOT the main image
                 let validAdditionalImages = 0;
                 product.images.additionalImages.slice(0, 5).forEach((img: any, imgIndex: number) => {
-                  const rawImgData = img.base64 || img;
+                  // Handle both string and object formats for additional images
+                  let rawImgData: string;
+                  if (typeof img === 'string') {
+                    rawImgData = img;
+                  } else if (img.base64) {
+                    rawImgData = img.base64;
+                  } else {
+                    console.warn(`Product ${index + 1} Additional Image ${imgIndex}: Invalid format`, img);
+                    return;
+                  }
                   const processedImg = processBase64Image(rawImgData);
                   if (processedImg) {
                     messageContent.push({
@@ -140,9 +186,20 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
           if (isImagePoll) {
             const imageCount = messageContent.filter(item => item.type === 'image').length;
             
+            console.log(`Image-based poll: Found ${imageCount} valid images out of ${request.products.length} products`);
             
             if (imageCount === 0) {
-              throw new Error('No valid images found for image-based poll. Please check your image data and try again.');
+              // Provide more detailed error information
+              const productImageInfo = request.products.map((p: any, idx: number) => ({
+                product: idx + 1,
+                hasImages: !!p.images,
+                hasMainImage: !!p.images?.mainImage,
+                mainImageType: p.images?.mainImage ? typeof p.images.mainImage : 'N/A',
+                hasAdditionalImages: !!p.images?.additionalImages?.length
+              }));
+              
+              console.error('No valid images found. Product analysis:', productImageInfo);
+              throw new Error(`No valid images found for image-based poll. Analyzed ${request.products.length} products. Please ensure all products have valid image data.`);
             }
           }
 
@@ -230,6 +287,14 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
       stack: error?.stack,
       name: error?.name
     });
+    
+    // Check if it's a credit balance issue and show clear error
+    if (error?.message?.includes('credit balance is too low') || 
+        error?.message?.includes('credit balance') ||
+        error?.message?.includes('upgrade or purchase credits')) {
+      throw new Error('No Claude credits available. Please contact the administrator to add credits to your Anthropic account.');
+    }
+    
     const userMessage = getUserFriendlyErrorMessage(error);
     throw new Error(userMessage);
   }
@@ -448,3 +513,4 @@ export function validatePollResult(result: PollResult): boolean {
     result.rankings.every(r => r.percentage > 0) // No 0% products
   );
 }
+

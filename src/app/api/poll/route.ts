@@ -6,6 +6,16 @@ export async function POST(request: NextRequest) {
   try {
     const pollRequest: PollRequest = await request.json();
 
+    console.log('=== POLL API ROUTE ===');
+    console.log('Received poll request:', {
+      pollType: pollRequest.pollType,
+      productCount: pollRequest.products?.length || 0,
+      demographic: pollRequest.demographic,
+      question: pollRequest.question
+    });
+    
+    // Test log to verify changes are being applied
+    console.log('🔍 DEBUG: API route is working with latest changes!');
 
     // Validate request
     if (!pollRequest.products || pollRequest.products.length === 0) {
