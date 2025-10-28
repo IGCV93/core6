@@ -100,8 +100,27 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
             }
           };
 
-          // Add images for each product
-          request.products.forEach((product: any, index) => {
+          // Shuffle product order for image presentation to prevent bias
+          const shuffledProductsForImages = [...request.products].map((product, index) => ({
+            ...product,
+            originalIndex: index
+          }));
+          
+          // Fisher-Yates shuffle for image presentation
+          for (let i = shuffledProductsForImages.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffledProductsForImages[i], shuffledProductsForImages[j]] = [shuffledProductsForImages[j], shuffledProductsForImages[i]];
+          }
+          
+          // Log the image shuffling for debugging
+          console.log('Image order shuffled for poll:', shuffledProductsForImages.map((p, idx) => ({
+            shuffledPosition: idx + 1,
+            productName: p.name,
+            originalIndex: p.originalIndex
+          })));
+          
+          // Add images for each product in shuffled order
+          shuffledProductsForImages.forEach((product: any, shuffledIndex) => {
             if (product.images) {
               if (request.pollType === 'main_image' && product.images.mainImage) {
                 // Handle both string and object formats for mainImage
@@ -111,12 +130,12 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
                 } else if (product.images.mainImage.base64) {
                   rawImageData = product.images.mainImage.base64;
                 } else {
-                  console.warn(`Product ${index + 1}: Invalid mainImage format`, product.images.mainImage);
+                  console.warn(`Product ${shuffledIndex + 1}: Invalid mainImage format`, product.images.mainImage);
                   return;
                 }
                 
                 // Debug logging
-                console.log(`Product ${index + 1} mainImage:`, {
+                console.log(`Product ${shuffledIndex + 1} mainImage:`, {
                   type: typeof product.images.mainImage,
                   hasBase64: typeof product.images.mainImage === 'object' ? !!product.images.mainImage.base64 : 'N/A',
                   dataLength: rawImageData ? rawImageData.length : 0,
@@ -127,7 +146,7 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
                 if (processedImage) {
                   messageContent.push({
                     type: "text",
-                    text: `\nProduct ${index + 1} Main Image:`
+                    text: `\nProduct ${shuffledIndex + 1} Main Image:`
                   });
                   messageContent.push({
                     type: "image",
@@ -143,12 +162,15 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
               } else if (request.pollType === 'image_stack' && product.images.additionalImages) {
                 messageContent.push({
                   type: "text", 
-                  text: `\nProduct ${index + 1} Image Stack:`
+                  text: `\nProduct ${shuffledIndex + 1} Image Stack:`
                 });
+                
+                // Shuffle additional images within each product to prevent order bias
+                const shuffledAdditionalImages = [...product.images.additionalImages].sort(() => Math.random() - 0.5);
                 
                 // Add ONLY additional images (the "stack") - NOT the main image
                 let validAdditionalImages = 0;
-                product.images.additionalImages.slice(0, 5).forEach((img: any, imgIndex: number) => {
+                shuffledAdditionalImages.slice(0, 5).forEach((img: any, imgIndex: number) => {
                   // Handle both string and object formats for additional images
                   let rawImgData: string;
                   if (typeof img === 'string') {
@@ -156,7 +178,7 @@ export async function runPollSimulation(request: PollRequest): Promise<PollResul
                   } else if (img.base64) {
                     rawImgData = img.base64;
                   } else {
-                    console.warn(`Product ${index + 1} Additional Image ${imgIndex}: Invalid format`, img);
+                    console.warn(`Product ${shuffledIndex + 1} Additional Image ${imgIndex}: Invalid format`, img);
                     return;
                   }
                   const processedImg = processBase64Image(rawImgData);
@@ -416,33 +438,48 @@ Make sure percentages add up to exactly 100% and rankings are realistic for the 
 
 /**
  * Generate user prompt with product details
+ * FIXED: Removes product information bias and shuffles product order
  */
 function generateUserPrompt(request: PollRequest): string {
   const { products, question, pollType } = request;
   
-  // Keep product order consistent but add presentation variation
-  const presentationVariation = Math.random() > 0.5 ? 'detailed' : 'concise';
+  // Shuffle product order to prevent primacy bias while maintaining mapping
+  const shuffledProducts = [...products].map((product, index) => ({
+    ...product,
+    originalIndex: index // Keep track of original position for result mapping
+  }));
+  
+  // Fisher-Yates shuffle algorithm for proper randomization
+  for (let i = shuffledProducts.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledProducts[i], shuffledProducts[j]] = [shuffledProducts[j], shuffledProducts[i]];
+  }
+  
+  // Log the shuffling for debugging
+  console.log('Product order shuffled for poll:', shuffledProducts.map((p, idx) => ({
+    shuffledPosition: idx + 1,
+    productName: p.name,
+    originalIndex: p.originalIndex
+  })));
   
   let productList = '';
-  products.forEach((product: any, index) => {
+  shuffledProducts.forEach((product: any, index) => {
     productList += `Product ${index + 1}: ${product.name}\n`;
-    productList += `- ASIN: ${product.asin}\n`;
-    productList += `- Price: $${product.price}\n`;
-    productList += `- Rating: ${product.rating} stars (${product.reviewCount} reviews)\n`;
     
-    if (presentationVariation === 'detailed') {
-      productList += `- Features: ${product.features.substring(0, 200)}...\n`;
-    } else {
-      productList += `- Features: ${product.features.substring(0, 100)}...\n`;
-    }
-    
-    // Add image information for image-based polls
-    if ((pollType === 'main_image' || pollType === 'image_stack') && product.images) {
-      if (pollType === 'main_image' && product.images.mainImage) {
+    // Only include relevant information for each poll type to prevent bias
+    switch (pollType) {
+      case 'main_image':
+        // Main image poll: Only show product name and image reference
         productList += `- Main Image: [Image provided below]\n`;
-      } else if (pollType === 'image_stack' && product.images.additionalImages) {
-        productList += `- Image Stack: [${product.images.additionalImages.length + 1} images provided below]\n`;
-      }
+        break;
+      case 'image_stack':
+        // Image stack poll: Only show product name and image stack reference
+        productList += `- Image Stack: [${product.images?.additionalImages?.length || 0} images provided below]\n`;
+        break;
+      case 'features':
+        // Features poll: Only show product name and features
+        productList += `- Features: ${product.features}\n`;
+        break;
     }
     productList += '\n';
   });
@@ -467,6 +504,7 @@ Please simulate how 50 people from the specified demographic would respond to th
 
 /**
  * Convert percentage rankings to numerical rankings (1st, 2nd, etc.)
+ * FIXED: Properly handles shuffled product order and ensures correct mapping
  */
 function convertToRankings(rankings: { product: string; percentage: number }[], products: Product[]): PollResult['rankings'] {
   
@@ -474,7 +512,7 @@ function convertToRankings(rankings: { product: string; percentage: number }[], 
   const sorted = rankings.sort((a, b) => b.percentage - a.percentage);
   
   return sorted.map((item, index) => {
-    // Find the product by exact name match first
+    // Find the product by exact name match first (most reliable)
     let product = products.find(p => p.name === item.product);
     
     // If no exact match, try partial matching (in case of truncation)
@@ -485,11 +523,14 @@ function convertToRankings(rankings: { product: string; percentage: number }[], 
       );
     }
     
-    // If still no match, try to match by position (fallback)
-    if (!product && index < products.length) {
-      product = products[index];
+    // If still no match, log warning and try to match by position (fallback)
+    if (!product) {
+      console.warn(`Could not find product for ranking: "${item.product}"`);
+      if (index < products.length) {
+        product = products[index];
+        console.warn(`Using fallback product at position ${index}: ${product?.name}`);
+      }
     }
-    
     
     return {
       productId: product?.id || '',
