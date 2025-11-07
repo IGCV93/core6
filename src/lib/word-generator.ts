@@ -525,6 +525,8 @@ export async function generateOptimizationRecommendations(
     return "Unable to generate optimization recommendations - missing calculation data.";
   }
 
+  const userFeatureCopy = (userProduct.features ?? '').trim() || 'No feature copy provided';
+
   // Calculate specific competitive gaps
   const competitorPrices = competitors.map(c => c.price);
   const minCompPrice = Math.min(...competitorPrices);
@@ -551,6 +553,63 @@ export async function generateOptimizationRecommendations(
   const priceGapToAvg = userProduct.price - avgCompPrice;
   const ratingGapToMax = maxCompRating - userProduct.rating;
   const shippingGapToMin = userProduct.shippingDays - minCompShipping;
+
+  const describeImageSource = (
+    image: Product['mainImage'] | Product['additionalImages'][number] | null | undefined
+  ): string => {
+    if (!image) {
+      return 'Not provided';
+    }
+
+    if (typeof image === 'string') {
+      if (image.startsWith('data:image/')) {
+        const mediaType = image.substring(5, image.indexOf(';')) || 'image';
+        return `Inline ${mediaType} base64 (length ${image.length} chars)`;
+      }
+
+      if (image.startsWith('http://') || image.startsWith('https://')) {
+        return `URL: ${image}`;
+      }
+
+      return `Image reference string (length ${image.length} chars)`;
+    }
+
+    const mediaType = image.mediaType || 'image';
+    const base64Length = image.base64 ? image.base64.length : 0;
+    return `Inline ${mediaType} base64 (length ${base64Length} chars)`;
+  };
+
+  const formatFeatureSnippet = (copy?: string, limit: number = 400): string => {
+    if (!copy) {
+      return 'No feature copy provided';
+    }
+
+    const normalized = copy.replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      return 'No feature copy provided';
+    }
+
+    if (normalized.length <= limit) {
+      return normalized;
+    }
+
+    return `${normalized.slice(0, limit)}...`;
+  };
+
+  const productContentSnapshots = analysis.products.map(product => {
+    const additionalImages = Array.isArray(product.additionalImages) ? product.additionalImages : [];
+    const additionalImagesDetails = additionalImages.length
+      ? additionalImages
+          .map((img, index) => `     • Image ${index + 1}: ${describeImageSource(img)}`)
+          .join('\n')
+      : '     • None provided';
+
+    return `${product.isUserProduct ? 'YOUR PRODUCT' : 'Competitor'} - ${product.name} (ASIN: ${product.asin})
+   Main Image: ${describeImageSource(product.mainImage)}
+   Additional Images (${additionalImages.length}):
+${additionalImagesDetails}
+   Feature Copy Snapshot: ${formatFeatureSnippet(product.features)}`;
+  }).join('\n\n');
 
   const prompt = `You are an expert Amazon product optimization consultant. Analyze this SPECIFIC competitive data and provide CONCRETE, ACTIONABLE optimization recommendations with exact metrics and targets.
 
@@ -605,6 +664,12 @@ ${pollResults.features?.rankings.map(r => {
   return `- ${product?.name || 'Unknown'}: ${r.percentage}% preference (Rank #${r.rank})${isUserProduct ? ' ← YOUR PRODUCT' : ''}`;
 }).join('\n') || 'No features poll data'}
 
+FULL IMAGE & CONTENT SNAPSHOT (REFERENCE CURRENT STATE BEFORE RECOMMENDING CHANGES):
+${productContentSnapshots}
+
+CURRENT PRODUCT DETAIL PAGE COPY (CONFIRM BEFORE RECOMMENDING CHANGES):
+${userFeatureCopy}
+
 OPTIMIZATION REQUIREMENTS:
 Provide SPECIFIC, METRIC-DRIVEN recommendations based on the exact data above:
 
@@ -624,6 +689,14 @@ Provide SPECIFIC, METRIC-DRIVEN recommendations based on the exact data above:
    - Specific rating targets (e.g., "Improve rating from X to Y stars")
    - Concrete shipping targets (e.g., "Reduce shipping from X to Y days")
    - Specific score improvements (e.g., "Increase score by X points to reach Y/100")
+
+4. IMAGE COMPLIANCE & ACTIONABILITY RULES (MUST FOLLOW STRICTLY):
+   - MAIN IMAGE recommendations MUST comply with Amazon requirements (https://sellercentral.amazon.com/help/hub/reference/external/G1881?locale=en-US): pure white (#FFFFFF) background, product fills 85%+ of frame, only the product and what ships with it. If referencing a model, keep the model within the white background and interacting naturally with the product; never suggest lifestyle backdrops for the main image.
+   - SECONDARY/IMAGE STACK suggestions may include lifestyle or contextual scenes, but only leverage actual components the user sells. Label when suggestions belong to secondary images if they require non-white backgrounds or multiple angles.
+   - DO NOT recommend altering the product's design, materials, structural features, colors, or adding bundle items/extras that are not actually offered. Instead, focus on merchandising, staging, messaging, or compliance tweaks the seller can implement now.
+   - DO NOT recommend adding competitor-only value props. If competitors offer extras the user lacks, note it as a competitive gap but do not present it as an actionable change unless the product already includes it.
+   - Before giving a recommendation, confirm it is not already satisfied by the user's current assets or performance data above. If the main image already leads polls or the feature copy already covers the point, explicitly state "No additional change needed" instead of repeating the idea.
+   - Keep each main image recommendation focused on one clear improvement. If an idea needs supporting visuals (e.g., close-ups, lifestyle use cases), route it to the secondary image stack instead of overloading the main image.
 
 Format your response as:
 DEEP DIVE ANALYSIS:
